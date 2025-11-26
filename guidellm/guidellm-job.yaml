@@ -27,13 +27,11 @@ spec:
             value: /tmp/hf-cache
           - name: XDG_CACHE_HOME
             value: /tmp
-          - name: GUIDELLM_OUTPUT
-            value: /tmp/results/benchmarks.json
         volumeMounts:
           - name: cache
             mountPath: /tmp/hf-cache
           - name: results
-            mountPath: /tmp/results
+            mountPath: /results
       volumes:
         - name: cache
           emptyDir: {}
