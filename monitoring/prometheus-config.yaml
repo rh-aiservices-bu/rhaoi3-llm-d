@@ -138,10 +138,10 @@ data:
       relabel_configs:
       - source_labels: [__meta_kubernetes_service_name]
         action: keep
-        regex: 'llm-d-gaie-epp'
+        regex: 'qwen-epp-service'
       - source_labels: [__meta_kubernetes_endpoint_port_name]
         action: keep
-        regex: 'http-metrics'
+        regex: 'metrics|http-metrics'
       - source_labels: [__address__]
         action: replace
         regex: '([^:]+):.*'
