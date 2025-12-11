@@ -61,7 +61,7 @@ spec:
                   - pluginRef: kv-cache-utilization-scorer
                     weight: 2
                   - pluginRef: prefix-cache-scorer
-                    weight: 10
+                    weight: 3
             volumeMounts:
               - name: tokenizer-cache
                 mountPath: /tmp/tokenizer-cache
@@ -83,7 +83,7 @@ spec:
       - name: main
         env:
           - name: VLLM_ADDITIONAL_ARGS
-            value: "--disable-uvicorn-access-log"
+            value: "--disable-uvicorn-access-log --max-model-len=16000"
         resources:
           limits:
             cpu: '1'
