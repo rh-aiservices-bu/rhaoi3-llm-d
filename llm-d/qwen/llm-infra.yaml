@@ -43,6 +43,8 @@ spec:
               - '9003'
               - '--secure-serving'
               - '--model-server-metrics-scheme'
+              - --kv-cache-usage-percentage-metric
+              - vllm:kv_cache_usage_perc
               - https
               - '--config-text'
               - |
