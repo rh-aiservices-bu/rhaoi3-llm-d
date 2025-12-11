@@ -2,8 +2,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: guidellm-benchmark
-  namespace: demo-llm
 spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
   template:
     spec:
       restartPolicy: Never
@@ -14,13 +15,15 @@ spec:
         image: ghcr.io/vllm-project/guidellm:latest
         env:
           - name: GUIDELLM_TARGET
-            value: http://openshift-ai-inference-openshift-default.openshift-ingress.svc.cluster.local/demo-llm/qwen
+            value: "URL_PLACEHOLDER"
           - name: GUIDELLM_PROFILE
             value: sweep
           - name: GUIDELLM_MAX_SECONDS
             value: "30"
           - name: GUIDELLM_DATA
             value: "prompt_tokens=256,output_tokens=128"
+          - name: GUIDELLM_PROCESSOR
+            value: "Qwen/Qwen3-0.6B"
           - name: HF_HOME
             value: /tmp/hf-cache
           - name: TRANSFORMERS_CACHE

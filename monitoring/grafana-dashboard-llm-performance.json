@@ -328,7 +328,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(vllm:prefix_cache_hits_total{model_name=~\"$model\", kubernetes_namespace=~\"$namespace\", instance=~\".*:8000\", job=\"vllm-pods\"}) / sum(vllm:prefix_cache_queries_total{model_name=~\"$model\", kubernetes_namespace=~\"$namespace\", instance=~\".*:8000\", job=\"vllm-pods\"})",
+          "expr": "sum(vllm:prefix_cache_hits_total{model_name=~\"$model\", kubernetes_namespace=~\"$namespace\", instance=~\".*:8000\"}) / sum(vllm:prefix_cache_queries_total{model_name=~\"$model\", kubernetes_namespace=~\"$namespace\", instance=~\".*:8000\"})",
           "interval": "",
           "legendFormat": "Overall Cache Hit Rate",
           "range": true,
@@ -412,7 +412,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "vllm:prefix_cache_hits_total{model_name=~\"$model\", kubernetes_namespace=~\"$namespace\", instance=~\".*:8000\", job=\"vllm-pods\"} / vllm:prefix_cache_queries_total{model_name=~\"$model\", kubernetes_namespace=~\"$namespace\", instance=~\".*:8000\", job=\"vllm-pods\"} \n",
+          "expr": "vllm:prefix_cache_hits_total{model_name=~\"$model\", kubernetes_namespace=~\"$namespace\", instance=~\".*:8000\"} / vllm:prefix_cache_queries_total{model_name=~\"$model\", kubernetes_namespace=~\"$namespace\", instance=~\".*:8000\"} \n",
           "interval": "",
           "legendFormat": "Pod {{pod}}",
           "range": true,
@@ -485,7 +485,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "vllm:kv_cache_usage_perc{instance=~\".*:8000\", job=\"vllm-pods\"} * 100",
+          "expr": "vllm:kv_cache_usage_perc{instance=~\".*:8000\"} * 100",
           "legendFormat": "Cache Usage %",
           "range": true,
           "refId": "A"
@@ -563,7 +563,7 @@
         {
           "editorMode": "code",
           "exemplar": false,
-          "expr": "vllm:kv_cache_usage_perc{instance=~\".*:8000\", job=\"vllm-pods\"} * 100",
+          "expr": "vllm:kv_cache_usage_perc{instance=~\".*:8000\"} * 100",
           "instant": false,
           "legendFormat": "Pod {{pod}}",
           "range": true,

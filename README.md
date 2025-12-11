@@ -1,223 +1,199 @@
-# Qwen3-0.6B LLM Deployment
+## Running llm-d Demo, comparing against vLLM for tail latency improvements
 
-This folder contains Kustomize files to deploy llm-d with the Qwen3-0.6B model on OpenShift, including Prometheus and Grafana dashboard integration.
+This demonstrates the performance benefits of llm-d's intelligent routing compared to vanilla vLLM deployments through three steps.
 
-## Prerequisites
+### Step 0: Deploy Monitoring Stack
 
-- OpenShift cluster with GPU nodes
-- OpenShift AI (RHOAI) operator installed
-- `oc` CLI tool installed and configured
+**Objective**: Set up Prometheus and Grafana to visualize real-time metrics during benchmarks. Keep the Grafana dashboard open throughout to observe performance differences.
 
-## Deployment
-
-1. **Login to your OpenShift cluster:**
-   ```bash
-   oc login --server=<your-cluster-url>
-   ```
-
-2. **Deploy from the llm-d directory (recommended - includes base namespace setup):**
-   ```bash
-   cd llm-d
-   kubectl apply -k .
-   ```
-
-   Or from the repository root:
-   ```bash
-   kubectl apply -k llm-d
-   ```
-
-3. **Wait for the deployment to be ready:**
-   ```bash
-   oc wait --for=condition=Ready llminferenceservice/qwen -n demo-llm --timeout=600s
-   ```
-
-   Or watch pod status:
-   ```bash
-   oc get pods -n demo-llm -w
-   ```
-
-4. **Get the service URL:**
-   ```bash
-   export LLM_URL=$(oc get llminferenceservice qwen -n demo-llm -o jsonpath='{.status.url}')
-   echo "LLM Service URL: $LLM_URL"
-   ```
-
-## Testing
-
-### Set up test variables
+#### Deploy Monitoring
 
 ```bash
+oc apply -k monitoring
 
-# Define test prompts
-export SHORT_TEXT="What is the capital of France?"
+# Wait for Grafana to be ready
+oc wait --for=condition=ready pod -l app=grafana -n llm-d-monitoring --timeout=300s
 
-export LONG_TEXT_200_WORDS="Artificial intelligence has become one of the most transformative technologies of the 21st century, reshaping industries from healthcare to finance, transportation to entertainment. Machine learning algorithms can now analyze vast amounts of data, recognize complex patterns, and make predictions with remarkable accuracy. Deep learning networks have achieved superhuman performance in tasks like image recognition and natural language processing. However, the rapid advancement of AI also raises important ethical questions about privacy, bias, job displacement, and the concentration of power in the hands of a few large technology companies. As AI systems become more sophisticated and autonomous, society must grapple with how to ensure they align with human values and serve the common good. Researchers are exploring various approaches to make AI more transparent, fair, and accountable, including explainable AI, algorithmic auditing, and robust governance frameworks. The future of AI will depend not just on technical breakthroughs but also on thoughtful policy decisions and broad societal engagement with these critical issues. Education and public discourse will be essential to help people understand both the opportunities and risks that AI presents."
+# Get Grafana URL
+export GRAFANA_URL=$(oc get route grafana-secure -n llm-d-monitoring -o jsonpath='{.spec.host}')
+echo "Grafana URL: https://$GRAFANA_URL"
 ```
 
-### Test with short prompt
+#### Access Grafana Dashboard
+
+1. Open `https://$GRAFANA_URL` in your browser
+2. Login with default credentials: `admin` / `admin`
+3. Navigate to **Dashboards → LLM Performance Dashboard**
+4. Keep this dashboard open during all benchmarks
+
+#### Key Metrics to Watch
+
+| Metric | What to Look For |
+|--------|------------------|
+| **KV Cache Hit Rate** | Higher is better - llm-d should show significantly higher cache hits |
+| **Time to First Token (TTFT)** | Lower P95/P99 indicates better tail latency |
+| **Requests per Second** | Overall throughput comparison |
+| **GPU Utilization** | llm-d should show more balanced utilization across replicas |
+
+---
+
+### Step 1: Baseline vLLM Performance with GuideLLM
+
+**Objective**: Demonstrate vLLM's raw throughput and ease of configuration. Show how easy it is to get blazingly fast inference from a single instance with tensor parallelism across multiple GPUs.
+
+#### Deploy vLLM (4 replicas)
 
 ```bash
-curl -s $LLM_URL/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "Qwen/Qwen3-0.6B",
-    "prompt": "'"$SHORT_TEXT"'",
-    "max_tokens": 50
-  }' | jq
+oc apply -k vllm
+
+# Wait for all replicas to be ready
+oc wait --for=condition=ready pod -l serving.kserve.io/inferenceservice=qwen-vllm -n demo-llm --timeout=300s
+
 ```
 
-### Test with long prompt (200 words)
+#### Run GuideLLM Benchmark
 
 ```bash
-curl -s $LLM_URL/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "Qwen/Qwen3-0.6B",
-    "prompt": "'"$LONG_TEXT_200_WORDS"'",
-    "max_tokens": 50
-  }' | jq
+oc apply -k guidellm/overlays/vllm
+
+# Watch the results
+oc logs -f job/vllm-guidellm-benchmark -n demo-llm
 ```
 
-### Test streaming completion
+> **Grafana**: Watch the dashboard during this benchmark. Note the baseline TTFT and throughput metrics for vLLM.
+
+#### Key Takeaways
+
+- vLLM provides excellent single-instance throughput
+- Easy to configure and deploy
+- Automatic prefix caching within each replica
+
+**However**: Now that we've confirmed vLLM is the optimal inference server, let's examine how monolithic deployments and simplistic routing strategies can introduce bottlenecks that leave GPUs underutilized.
+
+---
+
+### Step 2: Reveal vLLM Scaling Limitations
+
+**Objective**: Use the multi-turn benchmark to simulate scenarios where vLLM without llm-d demonstrates issues with tail latency. This shows **"what your most frustrated users see"**.
+
+#### Run Multi-Turn Benchmark Against vLLM
 
 ```bash
-curl -s $LLM_URL/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "Qwen/Qwen3-0.6B",
-    "prompt": "'"$SHORT_TEXT"'",
-    "max_tokens": 50,
-    "stream": true
-  }'
+# Run the benchmark job
+oc apply -k benchmark-job/overlays/vllm
+
+# Watch the results
+oc logs -f job/vllm-multi-turn-benchmark -n demo-llm
 ```
 
-## Monitoring
+> **Grafana**: Observe the **KV Cache Hit Rate** - with round-robin routing, cache hits will be low (~25%) as requests scatter across replicas. Watch **TTFT P95/P99** spike during multi-turn conversations.
 
-### Deploy Monitoring Stack
+#### Scenarios Demonstrated
 
-The repository includes a complete Prometheus and Grafana monitoring stack with a pre-configured LLM performance dashboard.
+**Scenario A: Multi-Turn Chat (KV Cache Re-use)**
+- Simulates realistic conversations where efficient KV cache re-use is critical
+- With round-robin routing, requests from the same conversation hit different replicas, missing cached prefixes
 
-1. **Deploy the monitoring stack:**
-   ```bash
-   kubectl apply -k monitoring
-   ```
+**Scenario B: Large Prompts (Prefill Bottlenecks)**
+- Seed documents contain 4000+ token code files and research papers
+- First turn latency varies wildly depending on which replica handles it
+- No prefix sharing between replicas
 
-2. **Wait for Grafana to be ready:**
-   ```bash
-   oc wait --for=condition=ready pod -l app=grafana -n llm-d-monitoring --timeout=300s
-   ```
+#### Expected vLLM Results
 
-3. **Get the Grafana URL:**
-   ```bash
-   export GRAFANA_URL=$(oc get route grafana-secure -n llm-d-monitoring -o jsonpath='{.spec.host}')
-   echo "Grafana URL: https://$GRAFANA_URL"
-   ```
+```
+Time to First Token (TTFT):
+  P50:        123.22 ms
+  P95:        744.71 ms    <-- High tail latency (frustrated users)
+  P99:        840.95 ms
 
-4. **Access Grafana:**
-   - Open the Grafana URL in your browser
-   - Default credentials: `admin` / `admin` (you'll be prompted to change the password)
-   - Navigate to Dashboards → LLM Performance Dashboard
+First Turn vs Subsequent Turns (Prefix Caching Indicator):
+  First turn avg:      351.64 ms
+  Later turns avg:     196.29 ms
+  Speedup ratio:         1.79x   <-- Suboptimal cache reuse
+```
 
-### LLM Performance Dashboard
-
-![Grafana Dashboard](assets/grafana.png)
-
-### Monitoring Features
-
-The monitoring stack includes:
-
-- **Prometheus:** Collects metrics from the LLM inference service
-- **Grafana:** Visualizes metrics with a pre-configured dashboard
-- **LLM Performance Dashboard:** Shows request latency, throughput, token generation rates, and more
-- **Metrics endpoint:** Available at the model server endpoint `/metrics`
-
-## Benchmarking with guidellm
-
-The `guidellm` folder contains a Job to run benchmarks against the LLM service using [guidellm](https://github.com/vllm-project/guidellm).
-
-### Create GitHub Container Registry Pull Secret
-
-The guidellm image is hosted on ghcr.io and requires authentication to pull:
-
-1. **Create a GitHub Personal Access Token (PAT):**
-   - Go to GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) https://github.com/settings/tokens
-
-   - Generate a new token with `read:packages` scope
-   - Copy the token
-
- 2. **Create these as environment variables:**
-
-   ```bash
-   export GITHUB_USERNAME=<your-username>
-   export GITHUB_PASS=<token>
-
-   ```
-
-3. **Create the pull secret:**
-   ```bash
-   oc create secret docker-registry ghcr-pull-secret \
-     --docker-server=ghcr.io \
-     --docker-username=$GITHUB_USERNAME \
-     --docker-password=$GITHUB_PASS \
-     -n demo-llm
-   ```
-
-### Run the Benchmark
-
-   ```bash
-   oc apply -k guidellm
-   ```
-
-
-### View Benchmark Results
+#### Cleanup vLLM
 
 ```bash
-oc logs -n demo-llm job/guidellm-benchmark -f
+oc delete job vllm-guidellm-benchmark vllm-multi-turn-benchmark -n demo-llm
+oc delete -k vllm
 ```
 
-## Configuration
+#### Reset Monitoring Data
 
-The deployment is configured with:
-- **Model:** Qwen3-0.6B from HuggingFace
-- **Replicas:** 2 (for high availability)
-- **GPU:** 1 NVIDIA GPU per replica
-- **Memory:** 8Gi per replica
-- **CPU:** 1 core per replica
-- **Auth:** Disabled (set `security.opendatahub.io/enable-auth: 'true'` to enable)
-
-## Troubleshooting
-
-**Check pod status:**
-```bash
-oc get pods -n demo-llm -l serving.kserve.io/inferenceservice=qwen
-```
-
-**View logs:**
-```bash
-oc logs -n demo-llm -l serving.kserve.io/inferenceservice=qwen -c main --tail=100 -f
-```
-
-**Check service status:**
-```bash
-oc get llminferenceservice qwen -n demo-llm -o yaml
-```
-
-**Verify route URL:**
-```bash
-oc get llminferenceservice qwen -n demo-llm -o jsonpath='{.status.url}'
-```
-
-## Cleanup
-
-To remove the deployment:
+Restart the Prometheus pod to clear vLLM metrics before deploying llm-d:
 
 ```bash
-kubectl delete -k llm-d
+oc delete pod -l app=prometheus -n llm-d-monitoring
+oc wait --for=condition=ready pod -l app=prometheus -n llm-d-monitoring --timeout=120s
 ```
 
-Or from the llm-d directory:
+---
+
+### Step 3: llm-d Intelligent Routing
+
+**Objective**: Deploy llm-d and re-run the benchmark, demonstrating improved tail latency through prefix-aware routing.
+
+#### Deploy llm-d (4 replicas)
 
 ```bash
-cd llm-d
-kubectl delete -k .
+oc apply -k llm-d
+
+# Wait for all replicas to be ready
+oc wait --for=condition=ready pod -l app.kubernetes.io/name=qwen -n demo-llm --timeout=300s
 ```
+
+#### Run the Same Benchmark
+
+```bash
+# Run the benchmark job against llm-d
+oc apply -k benchmark-job/overlays/llm-d
+
+# Watch the results
+oc logs -f job/llm-d-multi-turn-benchmark -n demo-llm
+```
+
+> **Grafana**: Compare with vLLM results. The **KV Cache Hit Rate** should jump to ~90%+ as llm-d routes requests to replicas with cached prefixes. **TTFT P95/P99** should be significantly lower and more consistent.
+
+
+#### Expected llm-d Results
+
+```
+Time to First Token (TTFT):
+  P50:         92.09 ms
+  P95:        271.60 ms    <-- Significantly lower tail latency
+  P99:        674.21 ms
+
+First Turn vs Subsequent Turns (Prefix Caching Indicator):
+  First turn avg:      361.79 ms
+  Later turns avg:      94.22 ms
+  Speedup ratio:         3.84x   <-- Excellent cache reuse
+```
+
+#### Why llm-d Performs Better
+
+| Feature | vLLM (Round-Robin) | llm-d (Intelligent Routing) |
+|---------|-------------------|----------------------------|
+| **Routing Strategy** | Random/Round-robin | Prefix-aware scoring |
+| **Cache Hits** | ~25% (1 in 4 replicas) | ~90%+ (routes to cached replica) |
+| **P95 Latency** | High variance | Consistent, lower |
+| **GPU Utilization** | Imbalanced | Balanced via KV-cache scoring |
+
+---
+
+### Results Comparison
+
+| Metric | vLLM | llm-d | Improvement |
+|--------|------|-------|-------------|
+| P50 TTFT | 123 ms | 92 ms | 25% faster |
+| P95 TTFT | 745 ms | 272 ms | **63% faster** |
+| P99 TTFT | 841 ms | 674 ms | 20% faster |
+| Cache Speedup | 1.79x | 3.84x | **2.1x better** |
+
+### Key Messages for Customers
+
+1. **Tail latency matters**: P95/P99 represents your most frustrated users
+2. **Cache efficiency at scale**: Single-replica caching doesn't help when requests scatter across replicas
+3. **Intelligent routing**: llm-d's prefix-aware routing ensures requests hit the replica with relevant cached data
+4. **No application changes**: Same API, same model, better performance

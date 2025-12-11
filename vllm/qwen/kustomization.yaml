@@ -7,5 +7,4 @@ resources:
   - serving-runtime.yaml
   - inference-service.yaml
   - pod-monitor.yaml
-  - route.yaml
   - service.yaml
