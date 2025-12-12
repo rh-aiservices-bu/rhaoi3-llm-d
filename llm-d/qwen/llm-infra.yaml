@@ -43,7 +43,10 @@ spec:
               - '9003'
               - '--secure-serving'
               - '--model-server-metrics-scheme'
+              - --kv-cache-usage-percentage-metric
+              - vllm:kv_cache_usage_perc
               - https
+              - --model-server-metrics-https-insecure-skip-verify=true
               - '--config-text'
               - |
                 apiVersion: inference.networking.x-k8s.io/v1alpha1
