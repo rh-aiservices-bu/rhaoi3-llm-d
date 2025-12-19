@@ -1,0 +1,51 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: gpt-oss-20b
+  namespace: demo-llm
+  annotations:
+    opendatahub.io/hardware-profile-name: gpu-profile
+    opendatahub.io/hardware-profile-namespace: redhat-ods-applications
+    opendatahub.io/model-type: generative
+    openshift.io/display-name: gpt-oss
+    security.opendatahub.io/enable-auth: 'false'
+spec:
+  replicas: 4
+  model:
+    uri: oci://quay.io/redhat-ai-services/modelcar-catalog:gpt-oss-20b
+    name: openai/gpt-oss-20b
+  router:
+    gateway: {}
+    route: {}
+    scheduler: {}
+  template:
+    containers:
+      - name: main
+        env:
+          # disable uvicorn access log to reduce log noise
+          - name: VLLM_ADDITIONAL_ARGS
+            value: "--disable-uvicorn-access-log --max-model-len=100000"
+        resources:
+          limits:
+            cpu: '1'
+            memory: 16Gi
+            nvidia.com/gpu: '1'
+          requests:
+            cpu: '1'
+            memory: 8Gi
+            nvidia.com/gpu: '1'
+        livenessProbe:
+          initialDelaySeconds: 10
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 120
+          timeoutSeconds: 30
+          periodSeconds: 30
+          failureThreshold: 5
+    tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists

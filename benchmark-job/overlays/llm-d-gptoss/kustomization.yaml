@@ -3,7 +3,7 @@ kind: Kustomization
 
 namespace: demo-llm
 
-namePrefix: vllm-
+namePrefix: llm-d-
 
 resources:
   - ../../base
@@ -15,4 +15,4 @@ patches:
     patch: |-
       - op: replace
         path: /spec/template/spec/containers/0/args/0
-        value: "http://vllm-lb.demo-llm.svc.cluster.local:8000/v1"
+        value: "http://openshift-ai-inference-openshift-default.openshift-ingress.svc.cluster.local/demo-llm/gpt-oss-20b/v1"

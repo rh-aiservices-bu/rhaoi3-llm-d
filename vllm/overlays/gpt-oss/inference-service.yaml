@@ -1,0 +1,47 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  annotations:
+    serving.kserve.io/deploymentMode: RawDeployment
+    serving.kserve.io/stop: "false"
+  labels:
+    app.kubernetes.io/instance: gpt-oss-20b
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: vllm-kserve
+    app.kubernetes.io/version: v0.10.1.1
+    helm.sh/chart: vllm-kserve-0.6.1
+    networking.kserve.io/visibility: exposed
+    opendatahub.io/dashboard: "true"
+  name: gpt-oss-20b
+  namespace: demo-llm
+spec:
+  predictor:
+    deploymentStrategy:
+      type: RollingUpdate
+    maxReplicas: 4
+    minReplicas: 4
+    model:
+      args:
+      - --served-model-name=openai/gpt-oss-20b
+      - --max-model-len=100000
+      env:
+      - name: TIKTOKEN_ENCODINGS_BASE
+        value: /mnt/models/tiktoken_encodings
+      modelFormat:
+        name: vLLM
+      name: ""
+      resources:
+        limits:
+          cpu: "4"
+          memory: 8Gi
+          nvidia.com/gpu: 1
+        requests:
+          cpu: "2"
+          memory: 2Gi
+          nvidia.com/gpu: 1
+      runtime: vllm-runtime
+      storageUri: oci://quay.io/redhat-ai-services/modelcar-catalog:gpt-oss-20b
+    tolerations:
+    - effect: NoSchedule
+      key: nvidia.com/gpu
+      operator: Exists
