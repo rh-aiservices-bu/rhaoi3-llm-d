@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Namespace
 metadata:
   annotations:
-    openshift.io/display-name: Demo - LLM-d
+    openshift.io/display-name: Demo - vLLM Xeon
   labels:
     openshift.io/cluster-monitoring: "true"
-  name: demo-llm
+  name: vllm-xeon

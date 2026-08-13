@@ -1,6 +1,17 @@
-## Running llm-d Demo, comparing against vLLM for tail latency improvements
+## Running llm-d Demo on Intel Xeon, comparing against vLLM for tail latency improvements
 
 This demonstrates the performance benefits of llm-d's intelligent routing compared to vanilla vLLM deployments through three steps.
+
+### Prerequisites
+
+1. OpenShift AI / KServe with access to the `openshift-ai-inference` gateway in `openshift-ingress`
+2. Intel Xeon worker nodes for CPU-based vLLM serving
+3. Image pull access for `quay.io/intel_on_openshift/vllm-cpu-rhel9:*`
+
+This repository is configured to use the following namespaces:
+
+- `vllm-xeon` for the baseline vLLM deployment
+- `llmd-xeon` for the llm-d deployment
 
 ### Step 0: Deploy Monitoring Stack
 
@@ -33,7 +44,7 @@ echo "Grafana URL: https://$GRAFANA_URL"
 | **KV Cache Hit Rate** | Higher is better - llm-d should show significantly higher cache hits |
 | **Time to First Token (TTFT)** | Lower P95/P99 indicates better tail latency |
 | **Requests per Second** | Overall throughput comparison |
-| **GPU Utilization** | llm-d should show more balanced utilization across replicas |
+| **CPU/Pod Utilization** | llm-d should show more balanced utilization across replicas |
 
 ---
 
@@ -47,7 +58,7 @@ echo "Grafana URL: https://$GRAFANA_URL"
 oc apply -k vllm
 
 # Wait for all replicas to be ready
-oc wait --for=condition=ready pod -l serving.kserve.io/inferenceservice=qwen-vllm -n demo-llm --timeout=300s
+oc wait --for=condition=ready pod -l serving.kserve.io/inferenceservice=qwen-vllm -n vllm-xeon --timeout=300s
 
 ```
 
@@ -57,7 +68,7 @@ oc wait --for=condition=ready pod -l serving.kserve.io/inferenceservice=qwen-vll
 oc apply -k guidellm/overlays/vllm
 
 # Watch the results
-oc logs -f job/vllm-guidellm-benchmark -n demo-llm
+oc logs -f job/vllm-guidellm-benchmark -n vllm-xeon
 ```
 
 > **Grafana**: Watch the dashboard during this benchmark. Note the baseline TTFT and throughput metrics for vLLM.
@@ -83,7 +94,7 @@ oc logs -f job/vllm-guidellm-benchmark -n demo-llm
 oc apply -k benchmark-job/overlays/vllm
 
 # Watch the results
-oc logs -f job/vllm-multi-turn-benchmark -n demo-llm
+oc logs -f job/vllm-multi-turn-benchmark -n vllm-xeon
 ```
 
 > **Grafana**: Observe the **KV Cache Hit Rate** - with round-robin routing, cache hits will be low (~25%) as requests scatter across replicas. Watch **TTFT P95/P99** spike during multi-turn conversations.
@@ -115,7 +126,7 @@ First Turn vs Subsequent Turns (Prefix Caching Indicator):
 #### Cleanup vLLM
 
 ```bash
-oc delete job vllm-guidellm-benchmark vllm-multi-turn-benchmark -n demo-llm
+oc delete job vllm-guidellm-benchmark vllm-multi-turn-benchmark -n vllm-xeon
 oc delete -k vllm
 ```
 
@@ -140,7 +151,7 @@ oc wait --for=condition=ready pod -l app=prometheus -n llm-d-monitoring --timeou
 oc apply -k llm-d
 
 # Wait for all replicas to be ready
-oc wait --for=condition=ready pod -l app.kubernetes.io/name=qwen -n demo-llm --timeout=300s
+oc wait --for=condition=ready pod -l app.kubernetes.io/name=qwen -n llmd-xeon --timeout=300s
 ```
 
 #### Run the Same Benchmark
@@ -150,7 +161,7 @@ oc wait --for=condition=ready pod -l app.kubernetes.io/name=qwen -n demo-llm --t
 oc apply -k benchmark-job/overlays/llm-d
 
 # Watch the results
-oc logs -f job/llm-d-multi-turn-benchmark -n demo-llm
+oc logs -f job/llm-d-multi-turn-benchmark -n llmd-xeon
 ```
 
 > **Grafana**: Compare with vLLM results. The **KV Cache Hit Rate** should jump to ~90%+ as llm-d routes requests to replicas with cached prefixes. **TTFT P95/P99** should be significantly lower and more consistent.
@@ -181,7 +192,7 @@ First Turn vs Subsequent Turns (Prefix Caching Indicator):
 | **Routing Strategy** | Random/Round-robin | Prefix-aware scoring |
 | **Cache Hits** | ~25% (1 in 4 replicas) | ~90%+ (routes to cached replica) |
 | **P95 Latency** | High variance | Consistent, lower |
-| **GPU Utilization** | Imbalanced | Balanced via KV-cache scoring |
+| **CPU/Pod Utilization** | Imbalanced | Balanced via KV-cache scoring |
 
 ---
 

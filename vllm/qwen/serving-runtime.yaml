@@ -2,29 +2,98 @@ apiVersion: serving.kserve.io/v1alpha1
 kind: ServingRuntime
 metadata:
   name: vllm-runtime
+  namespace: vllm-xeon
 spec:
   annotations:
     opendatahub.io/kserve-runtime: vllm
     prometheus.io/path: /metrics
-    prometheus.io/port: '8000'
+    prometheus.io/port: "8000"
   containers:
-    - args:
-        - '--port=8000'
-        - '--model=/mnt/models'
-        - '--served-model-name={{.Name}}'
-        - '--max-model-len=16000'
-      command:
-        - python
-        - '-m'
-        - vllm.entrypoints.openai.api_server
+    - name: kserve-container
+      image: 'quay.io/intel_on_openshift/vllm-cpu-rhel9:3.4.0-1777444682'
+      command: ["bash", "-c"]
+      args:
+      - |-
+        #!/bin/bash
+        # Use POD_IP from environment variable (injected via Downward API)
+        LAST_OCTET=${POD_IP##*.}
+        POD_IDX=$((LAST_OCTET % 4))
+        
+        # NUMA topology mapping (physical cores only, reserving 1 core per node for VLLM)
+        if [ "$POD_IDX" -eq 0 ]; then
+            # Node 0: 0-42 -> Reserve 0 -> Bind 1-42
+            CORES=$(seq -s, 1 42)
+        elif [ "$POD_IDX" -eq 1 ]; then
+            # Node 1: 43-85 -> Reserve 43 -> Bind 44-85
+            CORES=$(seq -s, 44 85)
+        elif [ "$POD_IDX" -eq 2 ]; then
+            # Node 2: 86-127 -> Reserve 86 -> Bind 87-127
+            CORES=$(seq -s, 87 127)
+        else
+            # Node 3: 128-170 -> Reserve 128 -> Bind 129-170
+            CORES=$(seq -s, 129 170)
+        fi
+        
+        export VLLM_CPU_OMP_THREADS_BIND=$CORES
+        echo "=== Pod $HOSTNAME IP=$POD_IP bound to cores: $CORES (index $POD_IDX, last octet: $LAST_OCTET) ==="
+        export LD_PRELOAD="/usr/lib64/libomp.so${LD_PRELOAD:+:$LD_PRELOAD}"
+        exec vllm serve \
+          --model=/mnt/models \
+          --served-model-name=Qwen3-0.6B \
+          --dtype=bfloat16
       env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
         - name: HF_HOME
           value: /tmp/hf_home
-      image: 'registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:ad756c01ec99a99cc7d93401c41b8d92ca96fb1ab7c5262919d818f2be4f3768'
-      name: kserve-container
+        - name: VLLM_CPU_KVCACHE_SPACE
+          value: "40"
+        - name: VLLM_CPU_NUM_OF_RESERVED_CPU
+          value: "1"
+        # - name: LD_PRELOAD
+        #   value: "/usr/lib64/libtcmalloc_minimal.so.4:/usr/lib64/libomp.so"
+      startupProbe:
+        httpGet:
+          path: /health
+          port: 8000
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 120
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8000
+        initialDelaySeconds: 15
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8000
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
       ports:
         - containerPort: 8000
           protocol: TCP
+      volumeMounts:
+      - mountPath: /dev/shm
+        name: shm
+      - mountPath: /tmp/hf_home
+        name: hf-cache
+  volumes:
+  - name: shm
+    emptyDir:
+      medium: Memory
+      sizeLimit: 10Gi
+  - name: hf-cache
+    emptyDir:
+      sizeLimit: 5Gi
   multiModel: false
   supportedModelFormats:
     - autoSelect: true
