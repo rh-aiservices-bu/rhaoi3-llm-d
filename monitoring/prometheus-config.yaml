@@ -47,7 +47,8 @@ data:
       - role: pod
         namespaces:
           names:
-          - demo-llm
+          - llmd-xeon
+          - vllm-xeon
       scheme: https
       tls_config:
         insecure_skip_verify: true
@@ -78,7 +79,8 @@ data:
       - role: endpoints
         namespaces:
           names:
-          - demo-llm
+          - llmd-xeon
+          - vllm-xeon
       relabel_configs:
       - source_labels: [__meta_kubernetes_service_name]
         action: keep
@@ -92,7 +94,8 @@ data:
       - role: endpoints
         namespaces:
           names:
-          - demo-llm
+          - llmd-xeon
+          - vllm-xeon
       relabel_configs:
       - source_labels: [__meta_kubernetes_service_label_llm_d_ai_model]
         action: keep
@@ -118,7 +121,8 @@ data:
         namespaces:
           names:
           - envoy-gateway-system
-          - demo-llm
+          - llmd-xeon
+          - vllm-xeon
       relabel_configs:
       - source_labels: [__meta_kubernetes_service_name]
         action: keep
@@ -132,7 +136,8 @@ data:
       - role: endpoints
         namespaces:
           names:
-          - demo-llm
+          - llmd-xeon
+          - vllm-xeon
       scheme: http
       bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
       relabel_configs:
@@ -163,7 +168,8 @@ data:
       - role: pod
         namespaces:
           names:
-          - demo-llm
+          - llmd-xeon
+          - vllm-xeon
       scheme: https
       tls_config:
         insecure_skip_verify: true
@@ -201,7 +207,8 @@ data:
       - role: pod
         namespaces:
           names:
-          - demo-llm
+          - llmd-xeon
+          - vllm-xeon
       scheme: http
       metrics_path: /metrics
       relabel_configs:
@@ -240,7 +247,8 @@ data:
       - role: pod
         namespaces:
           names:
-          - demo-llm
+          - llmd-xeon
+          - vllm-xeon
       scheme: https
       tls_config:
         insecure_skip_verify: true
@@ -349,4 +357,3 @@ data:
         annotations:
           summary: High average queue size in inference pool
           description: "Average queue size is {{ $value }} for pool {{ $labels.name }}"
-

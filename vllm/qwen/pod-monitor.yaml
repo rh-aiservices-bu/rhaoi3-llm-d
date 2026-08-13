@@ -12,4 +12,4 @@ spec:
       interval: 30s
   namespaceSelector:
     matchNames:
-      - demo-llm
+      - vllm-xeon

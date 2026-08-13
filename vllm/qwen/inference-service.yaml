@@ -2,10 +2,12 @@ apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
   name: qwen-vllm
+  namespace: vllm-xeon
   annotations:
     serving.kserve.io/deploymentMode: RawDeployment
 spec:
   predictor:
+    serviceAccountName: vllm-xeon-sa
     automountServiceAccountToken: false
     maxReplicas: 4
     minReplicas: 4
@@ -13,18 +15,6 @@ spec:
       modelFormat:
         name: vLLM
       name: ''
-      resources:
-        limits:
-          cpu: '1'
-          memory: 8Gi
-          nvidia.com/gpu: '1'
-        requests:
-          cpu: '1'
-          memory: 8Gi
-          nvidia.com/gpu: '1'
+      resources: {}
       runtime: vllm-runtime
       storageUri: 'hf://Qwen/Qwen3-0.6B'
-    tolerations:
-      - key: "nvidia.com/gpu"
-        operator: "Exists"
-        effect: "NoSchedule"
